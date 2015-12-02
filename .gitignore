@@ -1,0 +1,17 @@
+*.o
+build/
+*.exe
+*.swp
+*~
+*#
+*.orig
+lib/
+.ycm_extra_conf.pyc
+*.a
+callgrind.*
+core.*
+cachegrind.*
+ptmmi
+ptmmi_p
+ptmpi
+
