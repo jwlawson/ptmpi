@@ -49,7 +49,7 @@ private:
 	 * Send the polytope to the specified worker thread.
 	 */
 	void
-	send_matrix(const ptope::PolytopeCandidate & matrix, int worker);
+	send_matrix(const ptope::PolytopeCandidate & matrix, const int worker);
 	/**
 	 * Wait for a result from a worker. Once a result is obtained it is passed to
 	 * handle_result, before another polytope is sent to the worker.
@@ -61,11 +61,6 @@ private:
 	 */
 	void
 	send_shutdown();
-	/**
-	 * Do something with the result from the workers.
-	 */
-	void
-	handle_result(int result, int worker);
 };
 template <class It>
 void
@@ -76,25 +71,23 @@ Master<It>::run() {
 	 * want to be waiting for tasks to return which were never submitted.
 	 */
 	int submitted = 1;
+	PolytopeCandidate next;
 	/* Send initial matrices to workers. */
 	for(int i = 1; i < _num_proc && _iter.has_next(); ++i) {
-		PolytopeCandidate next = _iter.next();
+		next = _iter.next();
 		send_matrix(next, i);
 		submitted++;
 	}
 	while(_iter.has_next()) {
 		/* Might as well compute the next polytope while waiting. */
-		PolytopeCandidate next = _iter.next();
-		int result = receive_result();
+		next = _iter.next();
+		receive_result();
 		int worker = _status.Get_source();
-		handle_result(result, worker);
 		send_matrix(next, worker);
 	}
 	/* Wait for remaining tasks. */
 	for(int i = 1; i < submitted; ++i) {
-		int result = receive_result();
-		int worker = _status.Get_source();
-		handle_result(result, worker);
+		receive_result();
 	}
 	send_shutdown();
 	std::cerr << "master: Average wait " << (_time_waited.count() / _no_computed)
@@ -102,7 +95,7 @@ Master<It>::run() {
 }
 template <class It>
 void
-Master<It>::send_matrix(const PolytopeCandidate & matrix, int worker) {
+Master<It>::send_matrix(const PolytopeCandidate & matrix, const int worker) {
 	int g_size = _codec.size_gram(matrix);
 	MPI::COMM_WORLD.Send(&g_size, 1, MPI::INT, worker, SIZE_TAG);
 	MPI::COMM_WORLD.Recv(NULL, 0, MPI::BYTE, worker, OK_TAG);
@@ -137,10 +130,6 @@ Master<It>::send_shutdown() {
 	for(int i = 1; i < number; ++i) {
 		MPI::COMM_WORLD.Send(NULL, 0, MPI::BYTE, i, END_TAG);
 	}
-}
-template <class It>
-void
-Master<It>::handle_result(int /*ignored*/, int /*ignored*/) {
 }
 } 
 #endif
