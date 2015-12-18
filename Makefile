@@ -18,7 +18,7 @@ CXXFLAGS = -Wall -std=gnu++11 -march=native
 OPT = -g -O3
 B_OPT = -g -O3
 endif
-CXXFLAGS += -DARMA_DONT_USE_WRAPPER
+CXXFLAGS += -DARMA_DONT_USE_WRAPPER -DARMA_NO_DEBUG
 
 # Specify base directory
 BASE_DIR = .

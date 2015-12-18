@@ -21,6 +21,9 @@
 #include <mpi.h>
 #include <vector>
 #include <set>
+#include <unordered_set>
+
+#include "boost/container/flat_set.hpp"
 
 #include "ptope/polytope_check.h"
 
@@ -30,6 +33,7 @@ namespace ptmpi {
 class Slave {
 typedef ptope::PolytopeCandidate PC;
 typedef arma::vec Vec;
+static constexpr int max_depth = 5;
 struct VecLess {
 	static constexpr double error = 1e-10;
 	/** true if lhs < rhs, false otherwise. */
@@ -41,6 +45,23 @@ struct VecLess {
 		return result;
 	}
 };
+struct PCCache {
+	PCCache () : _cache(max_depth + 1) {}
+	PC & get(int d) {
+		return _cache[d];
+	}
+	std::vector<PC> _cache;
+};
+struct ChkCache {
+	ChkCache () : _cache(max_depth + 1) {}
+	ptope::PolytopeCheck & get(int d) {
+		return _cache[d];
+	}
+	std::vector<ptope::PolytopeCheck> _cache;
+};
+//typedef std::set<Vec, VecLess> VecSet;
+typedef boost::container::flat_set<Vec, VecLess> VecSet;
+typedef VecSet::const_iterator VIter;
 public:
 	Slave(int size, int rank);
 	void run();
@@ -50,16 +71,17 @@ private:
 	Codec _codec;
 	ptope::PolytopeCandidate _pt;
 	std::vector<PC> _l3;
-	std::set<Vec, VecLess> _vectors;
+	VecSet _vectors;
 	ptope::PolytopeCheck _chk;
 	std::ofstream _l3_out;
 	std::ofstream _lo_out;
 	int _depth;
+	PCCache _cache;
+	ChkCache _chk_cache;
 
 	bool receive();
 	void send_result(const int result);
 	int do_work();
-	typedef std::set<Vec, VecLess>::const_iterator VIter;
 	void add_till_polytope(const PC & p, VIter begin, const VIter & end,
 			int depth);
 };

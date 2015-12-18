@@ -93,6 +93,9 @@ Master<It>::run() {
 	std::cerr << "master: Average wait " << (_time_waited.count() / _no_computed)
 		<< std::endl;
 }
+namespace {
+std::ofstream f("/extra/var/users/njcz19/ptope/mo");
+}
 template <class It>
 void
 Master<It>::send_matrix(const PolytopeCandidate & matrix, const int worker) {
@@ -121,6 +124,7 @@ Master<It>::receive_result() {
 	auto end = std::chrono::system_clock::now();
 	_time_waited += (end - start);
 	++_no_computed;
+	if(_no_computed % 100 == 0) f << _time_waited.count()/_no_computed << std::endl;
 	return result;
 }
 template <class It>

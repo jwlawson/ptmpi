@@ -21,6 +21,7 @@
 #include <fstream>
 #include <string>
 
+#include "ptope/angles.h"
 #include "ptope/angle_check.h"
 #include "ptope/combined_check.h"
 #include "ptope/construct_iterator.h"
@@ -30,6 +31,7 @@
 #include "ptope/number_dotted_check.h"
 #include "ptope/polytope_extender.h"
 #include "ptope/stacked_iterator.h"
+#include "ptope/unique_matrix_check.h"
 
 #include "mpi_tags.h"
 
@@ -61,47 +63,36 @@ int main(int argc, char* argv[]) {
 	}
 
 	if(size > 1) {
-		const std::vector<uint> angles = {2, 3, 4, 5, 6, 7, 8};
-		ptope::PolytopeExtender::set_default_angles(angles);
+		ptope::Angles::get().set_angles({2, 3, 4, 5, 8});
 		if(rank == MASTER) {
 			typedef ptope::PolytopeCandidate PolytopeCandidate;
-			struct ValidCheck {
-				bool operator()(const PolytopeCandidate & p) {
-					return p.valid();
-				}
-			};
-			typedef ptope::CombinedCheck3<ValidCheck, true, ptope::DuplicateColumnCheck, false, ptope::NumberDottedCheck<0>, true> Check;
+			typedef ptope::CombinedCheck3<ptope::AngleCheck, true, ptope::DuplicateColumnCheck, false, ptope::UniqueMatrixCheck, true> Check;
 
 			typedef ptope::ConstructIterator<ptope::EllipticGenerator, PolytopeCandidate> EtoL0;
 			typedef ptope::StackedIterator<EtoL0, ptope::PolytopeExtender, PolytopeCandidate> L0toL1;
 			typedef ptope::FilteredIterator<L0toL1, PolytopeCandidate, Check, true> L1F;
-			typedef ptope::FilteredIterator<L1F, PolytopeCandidate, ptope::AngleCheck, true> L1Filtered;
-			typedef ptope::FilteredPrintIterator<L1Filtered, PolytopeCandidate, ptope::PolytopeCheck, false> L1NoP;
+			typedef ptope::FilteredPrintIterator<L1F, PolytopeCandidate, ptope::PolytopeCheck, false> L1NoP;
 
 			typedef ptope::StackedIterator<L1NoP, ptope::PolytopeExtender, PolytopeCandidate> L1toL2;
 			typedef ptope::FilteredIterator<L1toL2, PolytopeCandidate, Check, true> L2F;
-			typedef ptope::FilteredIterator<L2F, PolytopeCandidate, ptope::AngleCheck, true> L2Filtered;
-			typedef ptope::FilteredPrintIterator<L2Filtered, PolytopeCandidate, ptope::PolytopeCheck, false> L2NoP;
+			typedef ptope::FilteredPrintIterator<L2F, PolytopeCandidate, ptope::PolytopeCheck, false> L2NoP;
 
 			ptope::EllipticGenerator e(size);
 			EtoL0 l0(e);
 			L0toL1 l1(std::move(l0));
-			L1F l1fa(std::move(l1));
-			L1Filtered l1f(std::move(l1fa), angles);
+			L1F l1f(std::move(l1));
 			std::string ol1("/extra/var/users/njcz19/ptope/l1.");
 			ol1.append(std::to_string(size));
 			ol1.append(".poly");
 			std::ofstream outl1(ol1);
 			L1NoP l1np(std::move(l1f), outl1);
 			L1toL2 l2(std::move(l1np));
-			L2F l2fa(std::move(l2));
-			L2Filtered l2f(std::move(l2fa), angles);
+			L2F l2f(std::move(l2));
 			std::string ol2("/extra/var/users/njcz19/ptope/l2.");
 			ol2.append(std::to_string(size));
 			ol2.append(".poly");
 			std::ofstream outl2(ol2);
 			L2NoP l2np(std::move(l2f), outl2);
-
 			ptmpi::Master<L2NoP> master(std::move(l2np));
 			master.run();
 		} else {
@@ -117,4 +108,3 @@ int main(int argc, char* argv[]) {
 	return 0;
 }
 
-		

@@ -23,6 +23,7 @@
 #include "ptope/polytope_extender.h"
 #include "ptope/polytope_rebaser.h"
 #include "ptope/stacked_iterator.h"
+#include "ptope/unique_matrix_check.h"
 
 #include "codec.h"
 #include "mpi_tags.h"
@@ -31,13 +32,8 @@ namespace ptmpi {
 namespace {
 typedef ptope::StackedIterator<ptope::PolytopeRebaser, ptope::PolytopeExtender,
 					ptope::PolytopeCandidate> PCtoL3;
-struct ValidCheck {
-bool operator()(const ptope::PolytopeCandidate & p) {
-return p.valid();
-}
-};
-typedef ptope::CombinedCheck3<ValidCheck, true, ptope::DuplicateColumnCheck,
-					false, ptope::AngleCheck, true> Check;
+typedef ptope::CombinedCheck2<ptope::DuplicateColumnCheck, false,
+				ptope::AngleCheck, true> Check;
 typedef ptope::FilteredIterator<PCtoL3, ptope::PolytopeCandidate, Check, true> L3F;
 
 std::string l3_filename(int size, int rank) {
@@ -59,6 +55,8 @@ Check valid_chk;
 unsigned long no_computed = 0;
 std::chrono::duration<double> time_waited(0);
 std::chrono::duration<double> max_wait(0);
+std::size_t max_l3(0);
+ptope::UniqueMatrixCheck __unique_chk;
 }
 Slave::Slave(int size, int rank)
 	: _l3_out(l3_filename(size, rank)),
@@ -71,6 +69,7 @@ Slave::run() {
 	}
 	std::cerr << "worker " << MPI::COMM_WORLD.Get_rank() << ": Average wait "
 		<< (time_waited.count() / no_computed) << ", max " << max_wait.count()
+		<< " with largest L3: " << max_l3
 		<< std::endl;
 }
 bool
@@ -112,21 +111,26 @@ Slave::do_work() {
 	_vectors.clear();
 	PCtoL3 l3_iter(_pt);
 	L3F l3(std::move(l3_iter));
+	const arma::uword last_vec_ind = _pt.vector_family().size();
 	while(l3.has_next()) {
 		auto n = l3.next();
-		if(_chk(n)) {
-			_l3_out << n << _l3_out.widen('\n');
-		} else {
-			_l3.emplace_back(std::move(n));
+		if(__unique_chk(n)) {
+			if(_chk(n)) {
+				if(_chk.used_all()) {
+					_l3_out << n << _l3_out.widen('\n');
+				}
+			} else {
+				_vectors.emplace(n.vector_family().get(last_vec_ind));
+				_l3.emplace_back(std::move(n));
+			}
 		}
-	}
-	const arma::uword last_vec_ind = _pt.vector_family().size();
-	for(auto & pc : _l3) {
-		_vectors.insert(pc.vector_family().unsafe_get(last_vec_ind));
 	}
 	for(auto & pc : _l3) {
 		// Recursively add vectors till get polytopes
 		add_till_polytope(pc, _vectors.begin(), _vectors.end(), 0);
+	}
+	if(_l3.size() > max_l3) {
+		max_l3 = _l3.size();
 	}
 	return 0;
 }
@@ -134,11 +138,14 @@ void
 Slave::add_till_polytope(const PC & p, VIter begin, const VIter & end,
 		int depth) {
 	/* Not really interested in polytopes with huge numbers of faces. */
-	if(depth > 5) return;
-	PC next = p.extend_by_vector(*begin);
+	if(depth > max_depth) return;
+	auto & next = _cache.get(depth);
+	p.extend_by_vector(next, *begin);
 	if(valid_chk(next)) {
-		if(_chk(next)) {
-			_lo_out << next << _lo_out.widen('\n');
+		if(_chk_cache.get(depth)(next)) {
+			if(_chk_cache.get(depth).used_all()) {
+				_lo_out << next << _lo_out.widen('\n');
+			}
 		} else {
 			for(; begin != end; ++begin) {
 				add_till_polytope(next, begin, end, depth + 1);
