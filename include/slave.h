@@ -79,11 +79,21 @@ private:
 	PCCache _cache;
 	ChkCache _chk_cache;
 
-	bool receive();
-	void send_result(const int result);
-	int do_work();
-	void add_till_polytope(const PC & p, VIter begin, const VIter & end,
-			int depth);
+	/** Get next work unit from master. */
+	bool
+	receive();
+	/** Ask master for more work. */
+	void
+	send_result(const int result);
+	/** Compute all polytopes form the most recently received thing. */
+	int
+	do_work();
+	/** Add vertices until the polytope is a polytope (or times out). */
+	void
+	add_till_polytope(const PC & p, VIter begin, const VIter & end, int depth);
+	/** Check whether the two vectors meet at 'nice' angle */
+	bool
+	valid_angle(const arma::vec & a, const arma::vec & b) const;
 };
 }
 #endif

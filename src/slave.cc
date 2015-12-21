@@ -16,6 +16,7 @@
  */
 #include "slave.h"
 
+#include "ptope/angles.h"
 #include "ptope/angle_check.h"
 #include "ptope/combined_check.h"
 #include "ptope/duplicate_column_check.h"
@@ -152,6 +153,30 @@ Slave::add_till_polytope(const PC & p, VIter begin, const VIter & end,
 			}
 		}
 	}
+}
+namespace {
+constexpr double error = 1e-14;
+struct DLess {
+	bool
+	operator()(const double & lhs, const double & rhs) {
+		return (lhs < rhs - error);
+	}
+} __d_less;
+double mink_inner_prod(const arma::vec & a, const arma::vec & b) {
+	double sq = 0;
+	arma::uword max = a.size() - 1;
+	for(arma::uword i = 0; i < max; ++i) {
+		sq += a(i) * b(i);
+	}
+	sq -= a(max) * b(max);
+	return sq;
+}
+}
+bool
+Slave::valid_angle(const arma::vec & a, const arma::vec & b) const {
+	auto & angles = ptope::Angles::get().inner_products();
+	const double val = mink_inner_prod(a, b);
+	return std::binary_search(angles.begin(), angles.end(), val, __d_less);
 }
 }
 
