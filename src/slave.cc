@@ -16,6 +16,8 @@
  */
 #include "slave.h"
 
+#include <string>
+
 #include "ptope/angles.h"
 #include "ptope/angle_check.h"
 #include "ptope/combined_check.h"
@@ -24,7 +26,6 @@
 #include "ptope/polytope_extender.h"
 #include "ptope/polytope_rebaser.h"
 #include "ptope/stacked_iterator.h"
-#include "ptope/unique_matrix_check.h"
 
 #include "codec.h"
 #include "mpi_tags.h"
@@ -108,13 +109,12 @@ Slave::send_result(const int res) {
 }
 int
 Slave::do_work() {
-	_l3.clear();
 	_vectors.clear();
 	PCtoL3 l3_iter(_pt);
 	L3F l3(std::move(l3_iter));
 	const arma::uword last_vec_ind = _pt.vector_family().size();
 	while(l3.has_next()) {
-		auto n = l3.next();
+		auto & n = l3.next();
 		if(__unique_chk(n)) {
 			if(_chk(n)) {
 				if(_chk.used_all()) {
@@ -122,34 +122,39 @@ Slave::do_work() {
 				}
 			} else {
 				_vectors.emplace(n.vector_family().get(last_vec_ind));
-				_l3.emplace_back(std::move(n));
 			}
 		}
 	}
-	for(auto & pc : _l3) {
+	check_compatibility();
+	for(std::size_t i = 0, max = _vectors.size(); i < max; ++i) {
 		// Recursively add vectors till get polytopes
-		add_till_polytope(pc, _vectors.begin(), _vectors.end(), 0);
+		std::vector<std::size_t> added(1, i);
+		add_till_polytope(_pt, _compatible[i].begin(), _compatible[i].end(), 0);
 	}
-	if(_l3.size() > max_l3) {
-		max_l3 = _l3.size();
+	if(_vectors.size() > max_l3) {
+		max_l3 = _vectors.size();
 	}
 	return 0;
 }
 void
-Slave::add_till_polytope(const PC & p, VIter begin, const VIter & end,
-		int depth) {
+Slave::add_till_polytope(const PC & p, CompatibleIter begin,
+		const CompatibleIter & end, int depth) {
 	/* Not really interested in polytopes with huge numbers of faces. */
 	if(depth > max_depth) return;
-	auto & next = _cache.get(depth);
-	p.extend_by_vector(next, *begin);
-	if(valid_chk(next)) {
-		if(_chk_cache.get(depth)(next)) {
+	auto & next_pc = _pc_cache.get(depth);
+	std::size_t index_to_add = *begin;
+	/* For speed, could check that the new index is compatible with all added
+	 * vectors. */
+	const auto & vec_add = *(_vectors.begin() + index_to_add);
+	p.extend_by_vector(next_pc, vec_add);
+	if(valid_chk(next_pc) && _unique_cache.get(depth)(next_pc)) {
+		if(_chk_cache.get(depth)(next_pc)) {
 			if(_chk_cache.get(depth).used_all()) {
-				_lo_out << next << _lo_out.widen('\n');
+				_lo_out << next_pc << _lo_out.widen('\n');
 			}
 		} else {
 			for(; begin != end; ++begin) {
-				add_till_polytope(next, begin, end, depth + 1);
+				add_till_polytope(next_pc, begin, end, depth + 1);
 			}
 		}
 	}
@@ -177,6 +182,27 @@ Slave::valid_angle(const arma::vec & a, const arma::vec & b) const {
 	auto & angles = ptope::Angles::get().inner_products();
 	const double val = mink_inner_prod(a, b);
 	return std::binary_search(angles.begin(), angles.end(), val, __d_less);
+}
+void
+Slave::check_compatibility() {
+	for(auto & vec : _compatible) vec.clear();
+	for(std::size_t ind = _compatible.size(), max = _vectors.size(); ind < max; ++ind) {
+		_compatible.emplace_back(std::vector<std::size_t>());
+	}
+	std::size_t i = 0;
+	for(auto start = _vectors.begin(), end = _vectors.end();
+			start != end;
+			++i, ++start) {
+		_compatible[i].push_back(i);
+		std::size_t j = i + 1;
+		for(auto vit = start + 1;
+				vit != end;
+				++j, ++vit) {
+			if(valid_angle(*start, *vit)) {
+				_compatible[i].push_back(j);
+			}
+		}
+	}
 }
 }
 

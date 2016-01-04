@@ -26,6 +26,7 @@
 #include "boost/container/flat_set.hpp"
 
 #include "ptope/polytope_check.h"
+#include "ptope/unique_matrix_check.h"
 
 #include "codec.h"
 
@@ -45,23 +46,23 @@ struct VecLess {
 		return result;
 	}
 };
-struct PCCache {
-	PCCache () : _cache(max_depth + 1) {}
-	PC & get(int d) {
+template<class T>
+struct Cache {
+	Cache () : _cache(max_depth + 1) {}
+	T & get(int d) {
 		return _cache[d];
 	}
-	std::vector<PC> _cache;
+	std::vector<T> _cache;
 };
-struct ChkCache {
-	ChkCache () : _cache(max_depth + 1) {}
-	ptope::PolytopeCheck & get(int d) {
-		return _cache[d];
-	}
-	std::vector<ptope::PolytopeCheck> _cache;
-};
+typedef Cache<PC> PCCache;
+typedef Cache<ptope::PolytopeCheck> ChkCache;
+typedef Cache<ptope::UniqueMatrixCheck> UMCCache;
 //typedef std::set<Vec, VecLess> VecSet;
 typedef boost::container::flat_set<Vec, VecLess> VecSet;
-typedef VecSet::const_iterator VIter;
+//typedef VecSet::const_iterator VIter;
+typedef std::vector<std::vector<std::size_t>> CompatibilitySet;
+typedef std::vector<std::size_t>::const_iterator CompatibleIter;
+
 public:
 	Slave(int size, int rank);
 	void run();
@@ -70,14 +71,14 @@ private:
 	MPI::Status _status;
 	Codec _codec;
 	ptope::PolytopeCandidate _pt;
-	std::vector<PC> _l3;
 	VecSet _vectors;
+	std::vector<std::vector<std::size_t>> _compatible;
 	ptope::PolytopeCheck _chk;
 	std::ofstream _l3_out;
 	std::ofstream _lo_out;
-	int _depth;
-	PCCache _cache;
+	PCCache _pc_cache;
 	ChkCache _chk_cache;
+	UMCCache _unique_cache;
 
 	/** Get next work unit from master. */
 	bool
@@ -90,10 +91,15 @@ private:
 	do_work();
 	/** Add vertices until the polytope is a polytope (or times out). */
 	void
-	add_till_polytope(const PC & p, VIter begin, const VIter & end, int depth);
+	add_till_polytope(const PC & p, CompatibleIter begin,
+			const CompatibleIter & end, int depth);
 	/** Check whether the two vectors meet at 'nice' angle */
 	bool
 	valid_angle(const arma::vec & a, const arma::vec & b) const;
+	/** Construct the set showing compatibility of the possible vectors to add to
+	 * polytopes. */
+	void
+	check_compatibility();
 };
 }
 #endif
