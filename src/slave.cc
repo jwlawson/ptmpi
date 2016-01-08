@@ -58,7 +58,7 @@ unsigned long no_computed = 0;
 std::chrono::duration<double> time_waited(0);
 std::chrono::duration<double> max_wait(0);
 std::size_t max_l3(0);
-ptope::UniqueMatrixCheck __unique_chk;
+ptope::UniqueMPtrCheck __unique_chk;
 }
 Slave::Slave(int size, int rank)
 	: _l3_out(l3_filename(size, rank)),
@@ -109,6 +109,7 @@ Slave::send_result(const int res) {
 }
 int
 Slave::do_work() {
+	__unique_chk = ptope::UniqueMPtrCheck();
 	_vectors.clear();
 	PCtoL3 l3_iter(_pt);
 	L3F l3(std::move(l3_iter));
@@ -126,15 +127,29 @@ Slave::do_work() {
 		}
 	}
 	check_compatibility();
+	/* Need to check against _vectors.size rather than _compatibility.size as the
+	 * latter is not updated if there are fewer vectors than on a preious run. */
 	for(std::size_t i = 0, max = _vectors.size(); i < max; ++i) {
 		// Recursively add vectors till get polytopes
-		std::vector<std::size_t> added(1, i);
-		add_till_polytope(_pt, _compatible[i].begin(), _compatible[i].end(), 0);
+		//std::vector<std::size_t> added(1, i);
+		add_till_polytope(i);
 	}
 	if(_vectors.size() > max_l3) {
 		max_l3 = _vectors.size();
 	}
 	return 0;
+}
+void
+Slave::add_till_polytope(std::size_t index) {
+	auto & next_pc = _pc_cache.get(0);
+	const auto vec_iter = _vectors.begin() + index;
+	const auto & vec_to_add = *(vec_iter);
+	_pt.extend_by_vector(next_pc, vec_to_add);
+	for(auto start = _compatible[index].begin(), end = _compatible[index].end();
+			start != end;
+			++start) {
+		add_till_polytope(next_pc, start, end, 1);
+	}
 }
 void
 Slave::add_till_polytope(const PC & p, CompatibleIter begin,
@@ -147,7 +162,7 @@ Slave::add_till_polytope(const PC & p, CompatibleIter begin,
 	 * vectors. */
 	const auto & vec_add = *(_vectors.begin() + index_to_add);
 	p.extend_by_vector(next_pc, vec_add);
-	if(valid_chk(next_pc) && _unique_cache.get(depth)(next_pc)) {
+	if(valid_chk(next_pc)){// && _unique_cache.get(depth)(next_pc)) {
 		if(_chk_cache.get(depth)(next_pc)) {
 			if(_chk_cache.get(depth).used_all()) {
 				_lo_out << next_pc << _lo_out.widen('\n');
@@ -186,14 +201,11 @@ Slave::valid_angle(const arma::vec & a, const arma::vec & b) const {
 void
 Slave::check_compatibility() {
 	for(auto & vec : _compatible) vec.clear();
-	for(std::size_t ind = _compatible.size(), max = _vectors.size(); ind < max; ++ind) {
-		_compatible.emplace_back(std::vector<std::size_t>());
-	}
+	_compatible.resize(_vectors.size());
 	std::size_t i = 0;
 	for(auto start = _vectors.begin(), end = _vectors.end();
 			start != end;
 			++i, ++start) {
-		_compatible[i].push_back(i);
 		std::size_t j = i + 1;
 		for(auto vit = start + 1;
 				vit != end;

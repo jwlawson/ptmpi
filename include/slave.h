@@ -34,7 +34,7 @@ namespace ptmpi {
 class Slave {
 typedef ptope::PolytopeCandidate PC;
 typedef arma::vec Vec;
-static constexpr int max_depth = 5;
+static constexpr int max_depth = 2;
 struct VecLess {
 	static constexpr double error = 1e-10;
 	/** true if lhs < rhs, false otherwise. */
@@ -56,7 +56,7 @@ struct Cache {
 };
 typedef Cache<PC> PCCache;
 typedef Cache<ptope::PolytopeCheck> ChkCache;
-typedef Cache<ptope::UniqueMatrixCheck> UMCCache;
+typedef Cache<ptope::UniqueMPtrCheck> UMCCache;
 //typedef std::set<Vec, VecLess> VecSet;
 typedef boost::container::flat_set<Vec, VecLess> VecSet;
 //typedef VecSet::const_iterator VIter;
@@ -72,7 +72,7 @@ private:
 	Codec _codec;
 	ptope::PolytopeCandidate _pt;
 	VecSet _vectors;
-	std::vector<std::vector<std::size_t>> _compatible;
+	CompatibilitySet _compatible;
 	ptope::PolytopeCheck _chk;
 	std::ofstream _l3_out;
 	std::ofstream _lo_out;
@@ -90,6 +90,8 @@ private:
 	int
 	do_work();
 	/** Add vertices until the polytope is a polytope (or times out). */
+	void
+	add_till_polytope(std::size_t index);
 	void
 	add_till_polytope(const PC & p, CompatibleIter begin,
 			const CompatibleIter & end, int depth);
