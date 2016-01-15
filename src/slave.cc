@@ -23,6 +23,7 @@
 #include "ptope/combined_check.h"
 #include "ptope/duplicate_column_check.h"
 #include "ptope/filtered_iterator.h"
+#include "ptope/parabolic_check.h"
 #include "ptope/polytope_extender.h"
 #include "ptope/polytope_rebaser.h"
 #include "ptope/stacked_iterator.h"
@@ -59,6 +60,7 @@ std::chrono::duration<double> time_waited(0);
 std::chrono::duration<double> max_wait(0);
 std::size_t max_l3(0);
 ptope::UniqueMPtrCheck __unique_chk;
+ptope::ParabolicCheck __para_chk;
 }
 Slave::Slave(int size, int rank)
 	: _l3_out(l3_filename(size, rank)),
@@ -116,11 +118,9 @@ Slave::do_work() {
 	const arma::uword last_vec_ind = _pt.vector_family().size();
 	while(l3.has_next()) {
 		auto & n = l3.next();
-		if(__unique_chk(n)) {
+		if(!__para_chk(n) && __unique_chk(n)) {
 			if(_chk(n)) {
-				if(_chk.used_all()) {
-					_l3_out << n << _l3_out.widen('\n');
-				}
+					n.save(_l3_out);
 			} else {
 				_vectors.emplace(n.vector_family().get(last_vec_ind));
 			}
@@ -164,9 +164,7 @@ Slave::add_till_polytope(const PC & p, CompatibleIter begin,
 	p.extend_by_vector(next_pc, vec_add);
 	if(valid_chk(next_pc)){// && _unique_cache.get(depth)(next_pc)) {
 		if(_chk_cache.get(depth)(next_pc)) {
-			if(_chk_cache.get(depth).used_all()) {
-				_lo_out << next_pc << _lo_out.widen('\n');
-			}
+				next_pc.save(_lo_out);
 		} else {
 			for(; begin != end; ++begin) {
 				add_till_polytope(next_pc, begin, end, depth + 1);
@@ -175,7 +173,7 @@ Slave::add_till_polytope(const PC & p, CompatibleIter begin,
 	}
 }
 namespace {
-constexpr double error = 1e-14;
+constexpr double error = 1e-10;
 struct DLess {
 	bool
 	operator()(const double & lhs, const double & rhs) {

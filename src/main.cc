@@ -29,6 +29,7 @@
 #include "ptope/elliptic_generator.h"
 #include "ptope/filtered_iterator.h"
 #include "ptope/number_dotted_check.h"
+#include "ptope/parabolic_check.h"
 #include "ptope/polytope_extender.h"
 #include "ptope/stacked_iterator.h"
 #include "ptope/unique_matrix_check.h"
@@ -63,10 +64,11 @@ int main(int argc, char* argv[]) {
 	}
 
 	if(size > 1) {
-		ptope::Angles::get().set_angles({2, 3, 4, 5, 8});
+		ptope::Angles::get().set_angles({2, 3, 4, 5, 8, 10});
 		if(rank == MASTER) {
 			typedef ptope::PolytopeCandidate PolytopeCandidate;
-			typedef ptope::CombinedCheck3<ptope::AngleCheck, true, ptope::DuplicateColumnCheck, false, ptope::UniqueMPtrCheck, true> Check;
+			typedef ptope::CombinedCheck3<ptope::AngleCheck, true, ptope::DuplicateColumnCheck, false, ptope::UniqueMPtrCheck, true> Check1;
+			typedef ptope::CombinedCheck2<Check1, true, ptope::ParabolicCheck, false> Check;
 
 			typedef ptope::ConstructIterator<ptope::EllipticGenerator, PolytopeCandidate> EtoL0;
 			typedef ptope::StackedIterator<EtoL0, ptope::PolytopeExtender, PolytopeCandidate> L0toL1;
