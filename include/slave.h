@@ -34,16 +34,16 @@ namespace ptmpi {
 class Slave {
 typedef ptope::PolytopeCandidate PC;
 typedef arma::vec Vec;
-static constexpr int max_depth = 2;
+static constexpr int max_depth = 4;
+static constexpr double error = 1e-10;
+static bool __dless(const double & a, const double & b) {
+	return a + error < b;
+}
 struct VecLess {
-	static constexpr double error = 1e-10;
 	/** true if lhs < rhs, false otherwise. */
 	bool operator()( const Vec & lhs, const Vec & rhs ) const {
-		bool result = true;
-		for(arma::uword i = 0; result && i < lhs.size(); ++i) {
-			result = ( (lhs(i) - rhs(i)) < error);
-		}
-		return result;
+		return std::lexicographical_compare(lhs.begin(), lhs.end(), rhs.begin(),
+				rhs.end(), __dless);
 	}
 };
 template<class T>
@@ -59,7 +59,6 @@ typedef Cache<ptope::PolytopeCheck> ChkCache;
 typedef Cache<ptope::UniqueMPtrCheck> UMCCache;
 //typedef std::set<Vec, VecLess> VecSet;
 typedef boost::container::flat_set<Vec, VecLess> VecSet;
-//typedef VecSet::const_iterator VIter;
 typedef std::vector<std::vector<std::size_t>> CompatibilitySet;
 typedef std::vector<std::size_t>::const_iterator CompatibleIter;
 
