@@ -124,7 +124,7 @@ Master<It>::receive_result() {
 	auto end = std::chrono::system_clock::now();
 	_time_waited += (end - start);
 	++_no_computed;
-	if(_no_computed % 100 == 0) f << _time_waited.count()/_no_computed << std::endl;
+	if(_no_computed % 20 == 0) f << _no_computed << ": " << _time_waited.count()/_no_computed << std::endl;
 	return result;
 }
 template <class It>

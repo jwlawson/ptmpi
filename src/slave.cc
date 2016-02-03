@@ -18,8 +18,8 @@
 
 #include <string>
 
-#include "ptope/angles.h"
 #include "ptope/angle_check.h"
+#include "ptope/calc.h"
 #include "ptope/combined_check.h"
 #include "ptope/duplicate_column_check.h"
 #include "ptope/filtered_iterator.h"
@@ -27,6 +27,7 @@
 #include "ptope/polytope_extender.h"
 #include "ptope/polytope_rebaser.h"
 #include "ptope/stacked_iterator.h"
+#include "ptope/elliptic_factory.h"
 
 #include "codec.h"
 #include "mpi_tags.h"
@@ -35,8 +36,8 @@ namespace ptmpi {
 namespace {
 typedef ptope::StackedIterator<ptope::PolytopeRebaser, ptope::PolytopeExtender,
 					ptope::PolytopeCandidate> PCtoL3;
-typedef ptope::CombinedCheck2<ptope::DuplicateColumnCheck, false,
-				ptope::AngleCheck, true> Check;
+typedef ptope::CombinedCheck3<ptope::AngleCheck, true,
+				ptope::DuplicateColumnCheck, false, ptope::UniquePCCheck, true> Check;
 typedef ptope::FilteredIterator<PCtoL3, ptope::PolytopeCandidate, Check, true> L3F;
 
 std::string l3_filename(int size, int rank) {
@@ -54,17 +55,20 @@ std::string lo_filename(int size, int rank) {
 	return result;
 }
 /* Argh global(ish) vars... */
-Check valid_chk;
+Check __valid_chk;
 unsigned long no_computed = 0;
 std::chrono::duration<double> time_waited(0);
 std::chrono::duration<double> max_wait(0);
 std::size_t max_l3(0);
-ptope::UniqueMPtrCheck __unique_chk;
 ptope::ParabolicCheck __para_chk;
+
 }
 Slave::Slave(int size, int rank)
 	: _l3_out(l3_filename(size, rank)),
-		_lo_out(lo_filename(size, rank)) {}
+		_lo_out(lo_filename(size, rank)),
+		_added(max_depth),
+		_angles(ptope::Angles::get().inner_products().begin(),
+				ptope::Angles::get().inner_products().end()) {}
 void
 Slave::run() {
 	while(receive()) {
@@ -111,18 +115,20 @@ Slave::send_result(const int res) {
 }
 int
 Slave::do_work() {
-	__unique_chk = ptope::UniqueMPtrCheck();
-	_vectors.clear();
 	PCtoL3 l3_iter(_pt);
 	L3F l3(std::move(l3_iter));
 	const arma::uword last_vec_ind = _pt.vector_family().size();
 	while(l3.has_next()) {
 		auto & n = l3.next();
-		if(!__para_chk(n) && __unique_chk(n)) {
+		if(!__para_chk(n)) {
 			if(_chk(n)) {
 					n.save(_l3_out);
 			} else {
-				_vectors.emplace(n.vector_family().get(last_vec_ind));
+				Vec * p = new Vec(n.vector_family().get(last_vec_ind));
+				bool success = _vectors.insert(p).second;
+				if(!success) {
+					delete p;
+				}
 			}
 		}
 	}
@@ -130,76 +136,79 @@ Slave::do_work() {
 	/* Need to check against _vectors.size rather than _compatibility.size as the
 	 * latter is not updated if there are fewer vectors than on a preious run. */
 	for(std::size_t i = 0, max = _vectors.size(); i < max; ++i) {
-		// Recursively add vectors till get polytopes
-		//std::vector<std::size_t> added(1, i);
 		add_till_polytope(i);
 	}
 	if(_vectors.size() > max_l3) {
 		max_l3 = _vectors.size();
 	}
+	for(Vec * p : _vectors) {
+		delete p;
+	}
+	_vectors.clear();
 	return 0;
 }
 void
 Slave::add_till_polytope(std::size_t index) {
+	if(_compatible[index].empty()) return;
 	auto & next_pc = _pc_cache.get(0);
 	const auto vec_iter = _vectors.begin() + index;
-	const auto & vec_to_add = *(vec_iter);
+	const auto & vec_to_add = **(vec_iter);
 	_pt.extend_by_vector(next_pc, vec_to_add);
+	_added[0] = index;
 	for(auto start = _compatible[index].begin(), end = _compatible[index].end();
 			start != end;
 			++start) {
-		add_till_polytope(next_pc, start, end, 1);
+		add_till_polytope(next_pc, start, end, 1, _added);
 	}
 }
 void
 Slave::add_till_polytope(const PC & p, CompatibleIter begin,
-		const CompatibleIter & end, int depth) {
-	/* Not really interested in polytopes with huge numbers of faces. */
-	if(depth > max_depth) return;
+		const CompatibleIter & end, int depth, IndexVec & added) {
 	auto & next_pc = _pc_cache.get(depth);
 	std::size_t index_to_add = *begin;
-	/* For speed, could check that the new index is compatible with all added
-	 * vectors. */
-	const auto & vec_add = *(_vectors.begin() + index_to_add);
-	p.extend_by_vector(next_pc, vec_add);
-	if(valid_chk(next_pc)){// && _unique_cache.get(depth)(next_pc)) {
-		if(_chk_cache.get(depth)(next_pc)) {
-				next_pc.save(_lo_out);
-		} else {
-			for(; begin != end; ++begin) {
-				add_till_polytope(next_pc, begin, end, depth + 1);
-			}
+	/* Check that the new index is compatible with all added vectors. */
+	for(auto iter = added.begin(), max = iter + depth; iter != max; ++iter) {
+		std::size_t & a = *iter;
+		if(!std::binary_search(_compatible[a].begin(), _compatible[a].end(),
+					index_to_add)) {
+			return;
 		}
 	}
+	const auto & vec_add = **(_vectors.begin() + index_to_add);
+	p.extend_by_vector(next_pc, vec_add);
+	//if(!__para_chk(next_pc)) {
+		if(_chk_cache.get(depth)(next_pc)) {
+				next_pc.save(_lo_out);
+		} else if(depth != max_depth) {
+			added[depth] = index_to_add;
+			for(++begin; begin != end; ++begin) {
+				add_till_polytope(next_pc, begin, end, depth + 1, added);
+			}
+		}
+	//}
 }
 namespace {
 constexpr double error = 1e-10;
-struct DLess {
-	bool
-	operator()(const double & lhs, const double & rhs) {
-		return (lhs < rhs - error);
-	}
-} __d_less;
-double mink_inner_prod(const arma::vec & a, const arma::vec & b) {
-	double sq = 0;
-	arma::uword max = a.size() - 1;
-	for(arma::uword i = 0; i < max; ++i) {
-		sq += a(i) * b(i);
-	}
-	sq -= a(max) * b(max);
-	return sq;
-}
+#ifdef __PTMPI_SLAVE_ANGLE_VEC
+ptope::comparator::DoubleLess __d_less;
+#endif
 }
 bool
 Slave::valid_angle(const arma::vec & a, const arma::vec & b) const {
-	auto & angles = ptope::Angles::get().inner_products();
-	const double val = mink_inner_prod(a, b);
-	return std::binary_search(angles.begin(), angles.end(), val, __d_less);
+	const double val = ptope::calc::mink_inner_prod(a, b);
+	bool dotted = val < -1;
+	bool angle = !dotted && val < error &&
+#ifdef __PTMPI_SLAVE_ANGLE_VEC
+		std::binary_search(_angles.begin(), _angles.end(), val, __d_less);
+#else
+		_angles.find(val) != _angles.end();
+#endif
+	return angle;
 }
 void
 Slave::check_compatibility() {
-	for(auto & vec : _compatible) vec.clear();
 	_compatible.resize(_vectors.size());
+	for(auto & vec : _compatible) vec.clear();
 	std::size_t i = 0;
 	for(auto start = _vectors.begin(), end = _vectors.end();
 			start != end;
@@ -208,7 +217,7 @@ Slave::check_compatibility() {
 		for(auto vit = start + 1;
 				vit != end;
 				++j, ++vit) {
-			if(valid_angle(*start, *vit)) {
+			if(valid_angle(**start, **vit)) {
 				_compatible[i].push_back(j);
 			}
 		}

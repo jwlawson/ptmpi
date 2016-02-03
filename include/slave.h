@@ -19,12 +19,14 @@
 #define _PTMPI_SLAVE_H_
 
 #include <mpi.h>
+#include <memory>
 #include <vector>
 #include <set>
-#include <unordered_set>
 
 #include "boost/container/flat_set.hpp"
 
+#include "ptope/angles.h"
+#include "ptope/comparator.h"
 #include "ptope/polytope_check.h"
 #include "ptope/unique_matrix_check.h"
 
@@ -34,18 +36,7 @@ namespace ptmpi {
 class Slave {
 typedef ptope::PolytopeCandidate PC;
 typedef arma::vec Vec;
-static constexpr int max_depth = 4;
-static constexpr double error = 1e-10;
-static bool __dless(const double & a, const double & b) {
-	return a + error < b;
-}
-struct VecLess {
-	/** true if lhs < rhs, false otherwise. */
-	bool operator()( const Vec & lhs, const Vec & rhs ) const {
-		return std::lexicographical_compare(lhs.begin(), lhs.end(), rhs.begin(),
-				rhs.end(), __dless);
-	}
-};
+static constexpr int max_depth = 3;
 template<class T>
 struct Cache {
 	Cache () : _cache(max_depth + 1) {}
@@ -56,11 +47,17 @@ struct Cache {
 };
 typedef Cache<PC> PCCache;
 typedef Cache<ptope::PolytopeCheck> ChkCache;
-typedef Cache<ptope::UniqueMPtrCheck> UMCCache;
 //typedef std::set<Vec, VecLess> VecSet;
-typedef boost::container::flat_set<Vec, VecLess> VecSet;
-typedef std::vector<std::vector<std::size_t>> CompatibilitySet;
-typedef std::vector<std::size_t>::const_iterator CompatibleIter;
+typedef boost::container::flat_set<Vec *, ptope::comparator::VecLess> VecSet;
+typedef std::vector<std::size_t> IndexVec;
+typedef std::vector<IndexVec> CompatibilitySet;
+typedef IndexVec::const_iterator CompatibleIter;
+#ifdef __PTOPE_SLAVE_ANGLE_VEC
+typedef ptope::Angles::InnerProducts AngleSet;
+#else
+typedef std::unordered_set<double, ptope::comparator::DoubleHash,
+				ptope::comparator::DoubleEquals> AngleSet;
+#endif
 
 public:
 	Slave(int size, int rank);
@@ -77,7 +74,8 @@ private:
 	std::ofstream _lo_out;
 	PCCache _pc_cache;
 	ChkCache _chk_cache;
-	UMCCache _unique_cache;
+	IndexVec _added;
+	AngleSet _angles;
 
 	/** Get next work unit from master. */
 	bool
@@ -93,7 +91,7 @@ private:
 	add_till_polytope(std::size_t index);
 	void
 	add_till_polytope(const PC & p, CompatibleIter begin,
-			const CompatibleIter & end, int depth);
+			const CompatibleIter & end, int depth, IndexVec & added);
 	/** Check whether the two vectors meet at 'nice' angle */
 	bool
 	valid_angle(const arma::vec & a, const arma::vec & b) const;

@@ -67,7 +67,9 @@ int main(int argc, char* argv[]) {
 		ptope::Angles::get().set_angles({2, 3, 4, 5, 8, 10});
 		if(rank == MASTER) {
 			typedef ptope::PolytopeCandidate PolytopeCandidate;
-			typedef ptope::CombinedCheck3<ptope::AngleCheck, true, ptope::DuplicateColumnCheck, false, ptope::UniqueMPtrCheck, true> Check1;
+			typedef ptope::CombinedCheck3<ptope::AngleCheck, true,
+							ptope::DuplicateColumnCheck, false, ptope::UniquePCCheck,
+							true> Check1;
 			typedef ptope::CombinedCheck2<Check1, true, ptope::ParabolicCheck, false> Check;
 
 			typedef ptope::ConstructIterator<ptope::EllipticGenerator, PolytopeCandidate> EtoL0;
