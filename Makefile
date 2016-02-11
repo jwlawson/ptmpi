@@ -39,7 +39,7 @@ INCLUDES = -I$(HOME)/include -I$(BASE_DIR)/include -I$(BASE_DIR)/lib/include
 LFLAGS = -L$(HOME)/lib -L$(BASE_DIR)/lib
 
 # define any libraries to link into executable:
-LIBS = -lptope -lopenblas -llapack
+LIBS = -lptope -lopenblas -llapack -lboost_system
 
 # find the C source files
 SRCS = $(wildcard $(SRC_DIR)/*.cc)

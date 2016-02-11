@@ -36,24 +36,10 @@ namespace ptmpi {
 namespace {
 typedef ptope::StackedIterator<ptope::PolytopeRebaser, ptope::PolytopeExtender,
 					ptope::PolytopeCandidate> PCtoL3;
-typedef ptope::CombinedCheck3<ptope::AngleCheck, true,
-				ptope::DuplicateColumnCheck, false, ptope::UniquePCCheck, true> Check;
+typedef ptope::CombinedCheck2<ptope::AngleCheck, true,
+				ptope::DuplicateColumnCheck, false> Check;
 typedef ptope::FilteredIterator<PCtoL3, ptope::PolytopeCandidate, Check, true> L3F;
 
-std::string l3_filename(int size, int rank) {
-	std::string result("/extra/var/users/njcz19/ptope/l3.");
-	result.append(std::to_string(size));
-	result.append(".poly.");
-	result.append(std::to_string(rank));
-	return result;
-}
-std::string lo_filename(int size, int rank) {
-	std::string result("/extra/var/users/njcz19/ptope/lo.");
-	result.append(std::to_string(size));
-	result.append(".poly.");
-	result.append(std::to_string(rank));
-	return result;
-}
 /* Argh global(ish) vars... */
 Check __valid_chk;
 unsigned long no_computed = 0;
@@ -61,11 +47,11 @@ std::chrono::duration<double> time_waited(0);
 std::chrono::duration<double> max_wait(0);
 std::size_t max_l3(0);
 ptope::ParabolicCheck __para_chk;
-
+ptope::BloomPCCheck __unique_chk;
 }
-Slave::Slave(int size, int rank)
-	: _l3_out(l3_filename(size, rank)),
-		_lo_out(lo_filename(size, rank)),
+Slave::Slave(std::ofstream && l3_os, std::ofstream && lo_os)
+	: _l3_out(std::move(l3_os)),
+		_lo_out(std::move(lo_os)),
 		_added(max_depth),
 		_angles(ptope::Angles::get().inner_products().begin(),
 				ptope::Angles::get().inner_products().end()) {}
@@ -120,7 +106,7 @@ Slave::do_work() {
 	const arma::uword last_vec_ind = _pt.vector_family().size();
 	while(l3.has_next()) {
 		auto & n = l3.next();
-		if(!__para_chk(n)) {
+		if(__unique_chk(n) && !__para_chk(n)) {
 			if(_chk(n)) {
 					n.save(_l3_out);
 			} else {
@@ -133,8 +119,8 @@ Slave::do_work() {
 		}
 	}
 	check_compatibility();
-	/* Need to check against _vectors.size rather than _compatibility.size as the
-	 * latter is not updated if there are fewer vectors than on a preious run. */
+	// Need to check against _vectors.size rather than _compatibility.size as the
+	// latter is not updated if there are fewer vectors than on a preious run.
 	for(std::size_t i = 0, max = _vectors.size(); i < max; ++i) {
 		add_till_polytope(i);
 	}

@@ -31,8 +31,10 @@ class Master {
 	typedef ptope::PolytopeCandidate PolytopeCandidate;
 public:
 	Master(It && iter)
-		: _iter(iter),
-			_num_proc(MPI::COMM_WORLD.Get_size()) {}
+		: _iter(std::move(iter)),
+			_num_proc(MPI::COMM_WORLD.Get_size()),
+			_status_out("/extra/var/users/njcz19/ptope/mo")
+	{}
 	/**
 	 * Go through the iterator and pass polytopes to worker threads.
 	 */
@@ -45,6 +47,7 @@ private:
 	Codec _codec;
 	std::chrono::duration<double> _time_waited{0};
 	unsigned long _no_computed = 0;
+	std::ofstream _status_out;
 	/**
 	 * Send the polytope to the specified worker thread.
 	 */
@@ -92,9 +95,7 @@ Master<It>::run() {
 	send_shutdown();
 	std::cerr << "master: Average wait " << (_time_waited.count() / _no_computed)
 		<< std::endl;
-}
-namespace {
-std::ofstream f("/extra/var/users/njcz19/ptope/mo");
+	_status_out << "End: " << _no_computed << std::endl;
 }
 template <class It>
 void
@@ -124,7 +125,8 @@ Master<It>::receive_result() {
 	auto end = std::chrono::system_clock::now();
 	_time_waited += (end - start);
 	++_no_computed;
-	if(_no_computed % 20 == 0) f << _no_computed << ": " << _time_waited.count()/_no_computed << std::endl;
+	if(_no_computed % 50 == 0) _status_out << _no_computed << ": " <<
+		_time_waited.count()/_no_computed << std::endl;
 	return result;
 }
 template <class It>

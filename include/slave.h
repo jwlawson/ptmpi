@@ -21,7 +21,6 @@
 #include <mpi.h>
 #include <memory>
 #include <vector>
-#include <set>
 
 #include "boost/container/flat_set.hpp"
 
@@ -47,7 +46,6 @@ struct Cache {
 };
 typedef Cache<PC> PCCache;
 typedef Cache<ptope::PolytopeCheck> ChkCache;
-//typedef std::set<Vec, VecLess> VecSet;
 typedef boost::container::flat_set<Vec *, ptope::comparator::VecLess> VecSet;
 typedef std::vector<std::size_t> IndexVec;
 typedef std::vector<IndexVec> CompatibilitySet;
@@ -60,7 +58,7 @@ typedef std::unordered_set<double, ptope::comparator::DoubleHash,
 #endif
 
 public:
-	Slave(int size, int rank);
+	Slave(std::ofstream && l3_filename, std::ofstream && lo_filename);
 	void run();
 
 private:
