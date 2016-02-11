@@ -10,11 +10,11 @@ ifeq ($(COMPILER),icpc)
 # When '-O3' is used I have noticed that there are frequently memory corruption
 # issues.
 CXXFLAGS = -std=c++11 -xhost
-OPT = -O3 -ipo -no-prec-div
-B_OPT = -O3 -ipo -no-prec-div
+OPT = -O3 -ipo
+B_OPT = -O3 -ipo
 else
 # Using cygwin -std=gnu++11 should be used rather than -std=c++11
-CXXFLAGS = -Wall -std=gnu++11 -march=native
+CXXFLAGS = -Wall -Wextra -std=gnu++11 -march=native
 OPT = -g -O3
 B_OPT = -g -O3
 endif
