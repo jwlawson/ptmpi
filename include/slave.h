@@ -59,7 +59,7 @@ typedef std::unordered_set<double, ptope::comparator::DoubleHash,
 
 public:
 	Slave(std::ofstream && l3_filename, std::ofstream && lo_filename);
-	void run();
+	void run(const bool only_compute_l3 = false);
 
 private:
 	MPI::Status _status;
@@ -83,7 +83,7 @@ private:
 	send_result(const int result);
 	/** Compute all polytopes form the most recently received thing. */
 	int
-	do_work();
+	do_work(const bool only_compute_l3);
 	/** Add vertices until the polytope is a polytope (or times out). */
 	void
 	add_till_polytope(std::size_t index);

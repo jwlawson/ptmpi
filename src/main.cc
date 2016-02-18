@@ -68,14 +68,15 @@ void
 usage(int rank) {
 	if(rank == MASTER) {
 		std::cout
-			<< "ptmpi [-s size] [-abde] [-f directory] [-p prefix] [-x suffix]" << std::endl
+			<< "ptmpi [-s size] [-abde] [-f directory] [-p prefix] [-x suffix] [-3]" << std::endl
 			<< " -s Specify the dimension of the space to search in" << std::endl
 			<< " -a, -b, -d, -e" << std::endl
 			<< "    Specify the initial elliptic subdiagram to start with (by Dynkin type)," << std::endl
 			<< "    defaults to using all possible elliptic subdiagrams." << std::endl
-			<< " -f" << std::endl
-			<< " -p" << std::endl
-			<< " -x" << std::endl;
+			<< " -f Specify directory to store results" << std::endl
+			<< " -p Specify result file prefix" << std::endl
+			<< " -x Specify result file suffix (will be appended by mpi rank)" << std::endl
+			<< " -3 Only compute up to L3, and don't attempt to extend the L3 polytopes" << std::endl;
 	}
 }
 enum Start {
@@ -139,8 +140,9 @@ main(int argc, char* argv[]) {
 	std::string dir = "/extra/var/users/njcz19/ptope";
 	std::string prefix = "l";
 	std::string suffix = ".poly";
+	bool only_l3 = false;
 
-	while ((opt = getopt (argc, argv, "s:abdef:p:x:")) != -1){
+	while ((opt = getopt (argc, argv, "s:abdef:p:x:3")) != -1){
 		switch (opt) {
 			case 's':
 				size = std::atoi(optarg);
@@ -165,6 +167,9 @@ main(int argc, char* argv[]) {
 				break;
 			case 'x':
 				suffix = optarg;
+				break;
+			case '3':
+				only_l3 = true;
 				break;
 			case '?':
 				usage(rank);
@@ -226,7 +231,7 @@ main(int argc, char* argv[]) {
 				return -1;
 			}
 			ptmpi::Slave slave(std::move(l3_os), std::move(lo_os));
-			slave.run();
+			slave.run(only_l3);
 		}
 
 	} else {

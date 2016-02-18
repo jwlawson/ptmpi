@@ -56,9 +56,9 @@ Slave::Slave(std::ofstream && l3_os, std::ofstream && lo_os)
 		_angles(ptope::Angles::get().inner_products().begin(),
 				ptope::Angles::get().inner_products().end()) {}
 void
-Slave::run() {
+Slave::run(const bool only_compute_l3) {
 	while(receive()) {
-		int result = do_work();
+		int result = do_work(only_compute_l3);
 		send_result(result);
 	}
 	std::cerr << "worker " << MPI::COMM_WORLD.Get_rank() << ": Average wait "
@@ -100,7 +100,7 @@ Slave::send_result(const int res) {
 	++no_computed;
 }
 int
-Slave::do_work() {
+Slave::do_work(const bool only_compute_l3) {
 	PCtoL3 l3_iter(_pt);
 	L3F l3(std::move(l3_iter));
 	const arma::uword last_vec_ind = _pt.vector_family().size();
@@ -109,7 +109,7 @@ Slave::do_work() {
 		if(__unique_chk(n) && !__para_chk(n)) {
 			if(_chk(n)) {
 					n.save(_l3_out);
-			} else {
+			} else if(!only_compute_l3) {
 				Vec * p = new Vec(n.vector_family().get(last_vec_ind));
 				bool success = _vectors.insert(p).second;
 				if(!success) {
@@ -118,6 +118,7 @@ Slave::do_work() {
 			}
 		}
 	}
+	if(only_compute_l3) return 0;
 	check_compatibility();
 	// Need to check against _vectors.size rather than _compatibility.size as the
 	// latter is not updated if there are fewer vectors than on a preious run.
