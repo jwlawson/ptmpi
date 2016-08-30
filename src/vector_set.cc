@@ -79,10 +79,11 @@ void
 VectorSet::priv_resize_extend() {
 	arma::uword const new_size = m_vector_store.n_cols * 3 / 2 + 100;
 	m_vector_store.resize( m_dimension , new_size );
-	double const * new_ptr = m_vector_store.memptr();
+	double const * old_ptr = m_current_data_ptr;
+	double * new_ptr = m_vector_store.memptr();
 	std::for_each( m_ordered_pointers.begin() , m_ordered_pointers.end() , 
-			[this, new_ptr](double const * & p) {
-				p = new_ptr + std::distance( this->m_current_data_ptr , p );
+			[old_ptr, new_ptr](double const * & p) {
+				p = new_ptr + std::distance( old_ptr , p );
 			} );
 	m_current_data_ptr = new_ptr;
 }
