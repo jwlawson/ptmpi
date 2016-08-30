@@ -19,15 +19,13 @@
 #define _PTMPI_SLAVE_H_
 
 #include <mpi.h>
-#include <memory>
-#include <vector>
 
 #include "boost/container/flat_set.hpp"
 
 #include "ptope/angles.h"
-#include "ptope/comparator.h"
 #include "ptope/polytope_check.h"
 #include "ptope/unique_matrix_check.h"
+#include "ptope/vector_set.h"
 
 #include "codec.h"
 
@@ -46,26 +44,20 @@ struct Cache {
 };
 typedef Cache<PC> PCCache;
 typedef Cache<ptope::PolytopeCheck> ChkCache;
-typedef boost::container::flat_set<Vec *, ptope::comparator::VecLess> VecSet;
 typedef std::vector<std::size_t> IndexVec;
-typedef std::vector<IndexVec> CompatibilitySet;
 typedef IndexVec::const_iterator CompatibleIter;
-#ifdef __PTOPE_SLAVE_ANGLE_VEC
-typedef ptope::Angles::InnerProducts AngleSet;
-#else
-typedef std::unordered_set<double, ptope::comparator::DoubleHash,
-				ptope::comparator::DoubleEquals> AngleSet;
-#endif
 
 public:
-	Slave(std::ofstream && l3_filename, std::ofstream && lo_filename);
+	typedef std::vector<IndexVec> CompatibilitySet;
+	Slave(unsigned int total_dimension, std::ofstream && l3_filename,
+			std::ofstream && lo_filename);
 	void run(const bool only_compute_l3 = false);
 
 private:
+	ptope::VectorSet _vectors;
 	MPI::Status _status;
 	Codec _codec;
 	ptope::PolytopeCandidate _pt;
-	VecSet _vectors;
 	CompatibilitySet _compatible;
 	ptope::PolytopeCheck _chk;
 	std::ofstream _l3_out;
@@ -73,7 +65,6 @@ private:
 	PCCache _pc_cache;
 	ChkCache _chk_cache;
 	IndexVec _added;
-	AngleSet _angles;
 
 	/** Get next work unit from master. */
 	bool
@@ -90,9 +81,6 @@ private:
 	void
 	add_till_polytope(const PC & p, CompatibleIter begin,
 			const CompatibleIter & end, int depth, IndexVec & added);
-	/** Check whether the two vectors meet at 'nice' angle */
-	bool
-	valid_angle(const arma::vec & a, const arma::vec & b) const;
 	/** Construct the set showing compatibility of the possible vectors to add to
 	 * polytopes. */
 	void

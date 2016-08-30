@@ -31,30 +31,28 @@
 
 #include "codec.h"
 #include "mpi_tags.h"
+#include "compatibility_util.h"
 
 namespace ptmpi {
 namespace {
 typedef ptope::StackedIterator<ptope::PolytopeRebaser, ptope::PolytopeExtender,
 					ptope::PolytopeCandidate> PCtoL3;
-typedef ptope::CombinedCheck2<ptope::AngleCheck, true,
+typedef ptope::CombinedCheck3<ptope::AngleCheck, true, ptope::UniquePCCheck, true,
 				ptope::DuplicateColumnCheck, false> Check;
 typedef ptope::FilteredIterator<PCtoL3, ptope::PolytopeCandidate, Check, true> L3F;
 
-/* Argh global(ish) vars... */
-Check __valid_chk;
 unsigned long no_computed = 0;
 std::chrono::duration<double> time_waited(0);
 std::chrono::duration<double> max_wait(0);
 std::size_t max_l3(0);
-ptope::ParabolicCheck __para_chk;
-ptope::BloomPCCheck __unique_chk;
 }
-Slave::Slave(std::ofstream && l3_os, std::ofstream && lo_os)
-	: _l3_out(std::move(l3_os)),
-		_lo_out(std::move(lo_os)),
-		_added(max_depth),
-		_angles(ptope::Angles::get().inner_products().begin(),
-				ptope::Angles::get().inner_products().end()) {}
+Slave::Slave(unsigned int total_dimension, std::ofstream && l3_os, std::ofstream && lo_os)
+	: _vectors(total_dimension)
+	, _l3_out(std::move(l3_os))
+	, _lo_out(std::move(lo_os))
+	, _added(max_depth)
+{}
+
 void
 Slave::run(const bool only_compute_l3) {
 	while(receive()) {
@@ -64,29 +62,29 @@ Slave::run(const bool only_compute_l3) {
 	std::cerr << "worker " << MPI::COMM_WORLD.Get_rank() << ": Average wait "
 		<< (time_waited.count() / no_computed) << ", max " << max_wait.count()
 		<< " with largest L3: " << max_l3
-		<< std::endl;
+		<< std::cerr.widen('\n');
 }
 bool
 Slave::receive() {
-	int g_size;
+	static arma::podarray<double> __gram_array_cache;
+	static arma::podarray<double> __vect_array_cache;
+	int g_size = 0;
 	MPI::COMM_WORLD.Recv(&g_size, 1, MPI::INT, MASTER, MPI::ANY_TAG, _status);
 	if(_status.Get_tag() == END_TAG) {
 		return false;
 	}
 	MPI::COMM_WORLD.Send(NULL, 0, MPI::BYTE, MASTER, OK_TAG);
-	double * g_arr = new double[g_size];
-	MPI::COMM_WORLD.Recv(g_arr, g_size, MPI::DOUBLE, MASTER, GRAM_TAG);
+	__gram_array_cache.set_min_size(g_size + 2);
+	MPI::COMM_WORLD.Recv(__gram_array_cache.memptr(), g_size, MPI::DOUBLE, MASTER, GRAM_TAG);
 	MPI::COMM_WORLD.Send(NULL, 0, MPI::BYTE, MASTER, OK_TAG);
-	int v_size;
+	int v_size = 0;
 	MPI::COMM_WORLD.Recv(&v_size, 1, MPI::INT, MASTER, MPI::ANY_TAG, _status);
 	MPI::COMM_WORLD.Send(NULL, 0, MPI::BYTE, MASTER, OK_TAG);
-	double * v_arr = new double[v_size];
-	MPI::COMM_WORLD.Recv(v_arr, v_size, MPI::DOUBLE, MASTER, VECTOR_TAG);
+	__vect_array_cache.set_min_size(v_size + 2);
+	MPI::COMM_WORLD.Recv(__vect_array_cache.memptr(), v_size, MPI::DOUBLE, MASTER, VECTOR_TAG);
 	MPI::COMM_WORLD.Send(NULL, 0, MPI::BYTE, MASTER, OK_TAG);
 
-	_pt = _codec.decode(g_arr, g_size, v_arr, v_size);
-	delete [] g_arr;
-	delete [] v_arr;
+	_pt = _codec.decode(__gram_array_cache.memptr(), g_size, __vect_array_cache.memptr(), v_size);
 	return true;
 }
 void
@@ -106,16 +104,10 @@ Slave::do_work(const bool only_compute_l3) {
 	const arma::uword last_vec_ind = _pt.vector_family().size();
 	while(l3.has_next()) {
 		auto & n = l3.next();
-		if(__unique_chk(n) && !__para_chk(n)) {
-			if(_chk(n)) {
-					n.save(_l3_out);
-			} else if(!only_compute_l3) {
-				Vec * p = new Vec(n.vector_family().get(last_vec_ind));
-				bool success = _vectors.insert(p).second;
-				if(!success) {
-					delete p;
-				}
-			}
+		if(_chk(n)) {
+			n.save(_l3_out);
+		} else if(!only_compute_l3) {
+			_vectors.add( n.vector_family().get_ptr(last_vec_ind) );
 		}
 	}
 	if(only_compute_l3) return 0;
@@ -128,9 +120,6 @@ Slave::do_work(const bool only_compute_l3) {
 	if(_vectors.size() > max_l3) {
 		max_l3 = _vectors.size();
 	}
-	for(Vec * p : _vectors) {
-		delete p;
-	}
 	_vectors.clear();
 	return 0;
 }
@@ -138,8 +127,7 @@ void
 Slave::add_till_polytope(std::size_t index) {
 	if(_compatible[index].empty()) return;
 	auto & next_pc = _pc_cache.get(0);
-	const auto vec_iter = _vectors.begin() + index;
-	const auto & vec_to_add = **(vec_iter);
+	const auto vec_to_add = _vectors.at( index );
 	_pt.extend_by_vector(next_pc, vec_to_add);
 	_added[0] = index;
 	for(auto start = _compatible[index].begin(), end = _compatible[index].end();
@@ -161,54 +149,21 @@ Slave::add_till_polytope(const PC & p, CompatibleIter begin,
 			return;
 		}
 	}
-	const auto & vec_add = **(_vectors.begin() + index_to_add);
-	p.extend_by_vector(next_pc, vec_add);
-	//if(!__para_chk(next_pc)) {
-		if(_chk_cache.get(depth)(next_pc)) {
-				next_pc.save(_lo_out);
-		} else if(depth != max_depth) {
-			added[depth] = index_to_add;
-			for(++begin; begin != end; ++begin) {
-				add_till_polytope(next_pc, begin, end, depth + 1, added);
-			}
+	const auto vec_to_add = _vectors.at( index_to_add );
+	p.extend_by_vector(next_pc, vec_to_add);
+	if(_chk_cache.get(depth)(next_pc)) {
+		next_pc.save(_lo_out);
+	} else if(depth != max_depth) {
+		added[depth] = index_to_add;
+		for(++begin; begin != end; ++begin) {
+			add_till_polytope(next_pc, begin, end, depth + 1, added);
 		}
-	//}
-}
-namespace {
-constexpr double error = 1e-10;
-#ifdef __PTMPI_SLAVE_ANGLE_VEC
-ptope::comparator::DoubleLess __d_less;
-#endif
-}
-bool
-Slave::valid_angle(const arma::vec & a, const arma::vec & b) const {
-	const double val = ptope::calc::mink_inner_prod(a, b);
-	bool dotted = val < -1;
-	bool angle = !dotted && val < error &&
-#ifdef __PTMPI_SLAVE_ANGLE_VEC
-		std::binary_search(_angles.begin(), _angles.end(), val, __d_less);
-#else
-		_angles.find(val) != _angles.end();
-#endif
-	return angle;
+	}
 }
 void
 Slave::check_compatibility() {
-	_compatible.resize(_vectors.size());
-	for(auto & vec : _compatible) vec.clear();
-	std::size_t i = 0;
-	for(auto start = _vectors.begin(), end = _vectors.end();
-			start != end;
-			++i, ++start) {
-		std::size_t j = i + 1;
-		for(auto vit = start + 1;
-				vit != end;
-				++j, ++vit) {
-			if(valid_angle(**start, **vit)) {
-				_compatible[i].push_back(j);
-			}
-		}
-	}
+	static ptmpi::CompatibilityUtil c_util;
+	c_util.compute_compatibilities( _vectors, _compatible );
 }
 }
 
