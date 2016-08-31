@@ -95,7 +95,7 @@ Master<It>::run() {
 	send_shutdown();
 	std::cerr << "master: Average wait " << (_time_waited.count() / _no_computed)
 		<< std::endl;
-	_status_out << "End: " << _no_computed << std::endl;
+	_status_out << "End: " << _no_computed << _status_out.widen('\n');
 }
 template <class It>
 void
@@ -125,8 +125,8 @@ Master<It>::receive_result() {
 	auto end = std::chrono::system_clock::now();
 	_time_waited += (end - start);
 	++_no_computed;
-	if(_no_computed % 50 == 0) _status_out << _no_computed << ": " <<
-		_time_waited.count()/_no_computed << std::endl;
+	if(_no_computed % 500 == 0) _status_out << _no_computed << ": " <<
+		_time_waited.count()/_no_computed << _status_out.widen('\n');
 	return result;
 }
 template <class It>
