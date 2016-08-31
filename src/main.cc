@@ -40,7 +40,7 @@
  * matrices which might or might not be polytopes. */
 namespace iter {
 typedef ptope::CombinedCheck3<ptope::AngleCheck, true,
-	ptope::DuplicateColumnCheck, false, ptope::BloomPCCheck,
+	ptope::DuplicateColumnCheck, false, ptope::UniquePCCheck,
 	true> Check1;
 typedef ptope::CombinedCheck2<Check1, true, ptope::ParabolicCheck, false> Check;
 
@@ -230,7 +230,7 @@ main(int argc, char* argv[]) {
 				std::cerr << "Error opening file " << lo_f << std::endl;
 				return -1;
 			}
-			ptmpi::Slave slave(std::move(l3_os), std::move(lo_os));
+			ptmpi::Slave slave(size, std::move(l3_os), std::move(lo_os));
 			slave.run(only_l3);
 		}
 
