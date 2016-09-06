@@ -23,6 +23,7 @@
 #include "boost/container/flat_set.hpp"
 
 #include "ptope/angles.h"
+#include "ptope/compatibility_info.h"
 #include "ptope/polytope_check.h"
 #include "ptope/unique_matrix_check.h"
 #include "ptope/vector_set.h"
@@ -45,10 +46,8 @@ struct Cache {
 typedef Cache<PC> PCCache;
 typedef Cache<ptope::PolytopeCheck> ChkCache;
 typedef std::vector<std::size_t> IndexVec;
-typedef IndexVec::const_iterator CompatibleIter;
 
 public:
-	typedef std::vector<IndexVec> CompatibilitySet;
 	Slave(unsigned int total_dimension, std::ofstream && l3_filename,
 			std::ofstream && lo_filename);
 	void run(const bool only_compute_l3 = false);
@@ -58,7 +57,7 @@ private:
 	MPI::Status _status;
 	Codec _codec;
 	ptope::PolytopeCandidate _pt;
-	CompatibilitySet _compatible;
+	ptope::CompatibilityInfo _compatible;
 	ptope::PolytopeCheck _chk;
 	std::ofstream _l3_out;
 	std::ofstream _lo_out;
@@ -79,12 +78,8 @@ private:
 	void
 	add_till_polytope(std::size_t index);
 	void
-	add_till_polytope(const PC & p, CompatibleIter begin,
-			const CompatibleIter & end, int depth, IndexVec & added);
-	/** Construct the set showing compatibility of the possible vectors to add to
-	 * polytopes. */
-	void
-	check_compatibility();
+	add_till_polytope(const PC & p, std::size_t index_to_add, int depth,
+			IndexVec & added);
 };
 }
 #endif

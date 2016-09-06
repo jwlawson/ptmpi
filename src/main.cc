@@ -230,7 +230,7 @@ main(int argc, char* argv[]) {
 				std::cerr << "Error opening file " << lo_f << std::endl;
 				return -1;
 			}
-			ptmpi::Slave slave(size, std::move(l3_os), std::move(lo_os));
+			ptmpi::Slave slave(size + 1, std::move(l3_os), std::move(lo_os));
 			slave.run(only_l3);
 		}
 

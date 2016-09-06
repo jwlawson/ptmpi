@@ -31,7 +31,6 @@
 
 #include "codec.h"
 #include "mpi_tags.h"
-#include "compatibility_util.h"
 
 namespace ptmpi {
 namespace {
@@ -47,7 +46,7 @@ std::chrono::duration<double> max_wait(0);
 std::size_t max_l3(0);
 }
 Slave::Slave(unsigned int total_dimension, std::ofstream && l3_os, std::ofstream && lo_os)
-	: _vectors(total_dimension)
+	: _vectors(total_dimension, 9500)
 	, _l3_out(std::move(l3_os))
 	, _lo_out(std::move(lo_os))
 	, _added(max_depth)
@@ -99,71 +98,67 @@ Slave::send_result(const int res) {
 }
 int
 Slave::do_work(const bool only_compute_l3) {
+	//static ptope::BloomPCCheck unique_check;
 	PCtoL3 l3_iter(_pt);
 	L3F l3(std::move(l3_iter));
 	const arma::uword last_vec_ind = _pt.vector_family().size();
 	while(l3.has_next()) {
 		auto & n = l3.next();
+		//if ( unique_check(n) ) {
 		if(_chk(n)) {
 			n.save(_l3_out);
-		} else if(!only_compute_l3) {
+		} else {
 			_vectors.add( n.vector_family().get_ptr(last_vec_ind) );
 		}
+		//}
 	}
-	if(only_compute_l3) return 0;
-	check_compatibility();
-	// Need to check against _vectors.size rather than _compatibility.size as the
-	// latter is not updated if there are fewer vectors than on a preious run.
-	for(std::size_t i = 0, max = _vectors.size(); i < max; ++i) {
-		add_till_polytope(i);
-	}
-	if(_vectors.size() > max_l3) {
-		max_l3 = _vectors.size();
+	if(_vectors.size() > max_l3) { max_l3 = _vectors.size(); }
+	if( !only_compute_l3 ) { 
+		_compatible.from( _vectors );
+		// Don't actually need to check the last one because of how it will have been
+		// checked in all others, so the only thing to check would be just adding the
+		// last vector itself, which was already checked in above loop.
+		for(std::size_t i = 0, max = _vectors.size() - 1; i < max; ++i) {
+			add_till_polytope(i);
+		}
 	}
 	_vectors.clear();
 	return 0;
 }
 void
 Slave::add_till_polytope(std::size_t index) {
-	if(_compatible[index].empty()) return;
+	//if(_compatible[index].empty()) return;
 	auto & next_pc = _pc_cache.get(0);
-	const auto vec_to_add = _vectors.at( index );
+	auto const& vec_to_add = _vectors.at( index );
 	_pt.extend_by_vector(next_pc, vec_to_add);
 	_added[0] = index;
-	for(auto start = _compatible[index].begin(), end = _compatible[index].end();
-			start != end;
-			++start) {
-		add_till_polytope(next_pc, start, end, 1, _added);
+	std::size_t next_ind = _compatible.next_compatible_to( index, 0 );
+	while ( next_ind != index ) {
+		add_till_polytope( next_pc, next_ind, 1, _added);
+		next_ind = _compatible.next_compatible_to( index, next_ind );
 	}
 }
 void
-Slave::add_till_polytope(const PC & p, CompatibleIter begin,
-		const CompatibleIter & end, int depth, IndexVec & added) {
+Slave::add_till_polytope(const PC & p, std::size_t index_to_add,
+		 int depth, IndexVec & added) {
 	auto & next_pc = _pc_cache.get(depth);
-	std::size_t index_to_add = *begin;
 	/* Check that the new index is compatible with all added vectors. */
-	for(auto iter = added.begin(), max = iter + depth; iter != max; ++iter) {
-		std::size_t & a = *iter;
-		if(!std::binary_search(_compatible[a].begin(), _compatible[a].end(),
-					index_to_add)) {
-			return;
-		}
+	for(auto iter = added.cbegin(), max = iter + depth; iter != max; ++iter) {
+		std::size_t const& a = *iter;
+		if( !_compatible.are_compatible( index_to_add , a ) ) { return; }
 	}
-	const auto vec_to_add = _vectors.at( index_to_add );
+	auto const& vec_to_add = _vectors.at( index_to_add );
 	p.extend_by_vector(next_pc, vec_to_add);
 	if(_chk_cache.get(depth)(next_pc)) {
 		next_pc.save(_lo_out);
 	} else if(depth != max_depth) {
 		added[depth] = index_to_add;
-		for(++begin; begin != end; ++begin) {
-			add_till_polytope(next_pc, begin, end, depth + 1, added);
+		std::size_t next_ind = _compatible.next_compatible_to( index_to_add , 0 );
+		while ( next_ind != index_to_add ) {
+			add_till_polytope( next_pc, next_ind, depth + 1, added );
+			next_ind = _compatible.next_compatible_to( index_to_add , next_ind );
 		}
 	}
-}
-void
-Slave::check_compatibility() {
-	static ptmpi::CompatibilityUtil c_util;
-	c_util.compute_compatibilities( _vectors, _compatible );
 }
 }
 
