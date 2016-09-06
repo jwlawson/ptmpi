@@ -73,27 +73,26 @@ Master<It>::run() {
 	 * that fewer tasks are generated and sent than there are cores, so don't
 	 * want to be waiting for tasks to return which were never submitted.
 	 */
-	int submitted = 1;
-	PolytopeCandidate next;
+	uint_fast16_t submitted = 1;
 	/* Send initial matrices to workers. */
 	for(int i = 1; i < _num_proc && _iter.has_next(); ++i) {
-		next = _iter.next();
+		auto& next = _iter.next();
 		send_matrix(next, i);
 		submitted++;
 	}
 	while(_iter.has_next()) {
 		/* Might as well compute the next polytope while waiting. */
-		next = _iter.next();
+		auto& next = _iter.next();
 		receive_result();
 		int worker = _status.Get_source();
 		send_matrix(next, worker);
 	}
 	/* Wait for remaining tasks. */
-	for(int i = 1; i < submitted; ++i) {
+	for(uint_fast16_t i = 1; i < submitted; ++i) {
 		receive_result();
 	}
 	send_shutdown();
-	std::cerr << "master: Average wait " << (_time_waited.count() / _no_computed)
+	std::cerr << "master: Average wait " << (_time_waited.count() / _no_computed) <<"s over " << _no_computed << " tasks."
 		<< std::endl;
 	_status_out << "End: " << _no_computed << _status_out.widen('\n');
 }
