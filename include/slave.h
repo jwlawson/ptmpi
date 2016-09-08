@@ -44,7 +44,6 @@ struct Cache {
 	std::vector<T> _cache;
 };
 typedef Cache<PC> PCCache;
-typedef Cache<ptope::PolytopeCheck> ChkCache;
 typedef std::vector<std::size_t> IndexVec;
 
 public:
@@ -53,16 +52,15 @@ public:
 	void run(const bool only_compute_l3 = false);
 
 private:
-	ptope::VectorSet _vectors;
+	ptope::VectorSet<double> _vectors;
 	MPI::Status _status;
 	Codec _codec;
 	ptope::PolytopeCandidate _pt;
 	ptope::CompatibilityInfo _compatible;
-	ptope::PolytopeCheck _chk;
+	ptope::PolytopeCheck _polytope_check;
 	std::ofstream _l3_out;
 	std::ofstream _lo_out;
 	PCCache _pc_cache;
-	ChkCache _chk_cache;
 	IndexVec _added;
 
 	/** Get next work unit from master. */

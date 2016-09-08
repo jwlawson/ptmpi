@@ -105,7 +105,7 @@ Slave::do_work(const bool only_compute_l3) {
 	while(l3.has_next()) {
 		auto & n = l3.next();
 		//if ( unique_check(n) ) {
-		if(_chk(n)) {
+		if(_polytope_check(n)) {
 			n.save(_l3_out);
 		} else {
 			_vectors.add( n.vector_family().get_ptr(last_vec_ind) );
@@ -127,12 +127,12 @@ Slave::do_work(const bool only_compute_l3) {
 }
 void
 Slave::add_till_polytope(std::size_t index) {
-	//if(_compatible[index].empty()) return;
+	std::size_t next_ind = _compatible.next_compatible_to( index, 0 );
+	if( next_ind == index ) { return; }
 	auto & next_pc = _pc_cache.get(0);
 	auto const& vec_to_add = _vectors.at( index );
 	_pt.extend_by_vector(next_pc, vec_to_add);
 	_added[0] = index;
-	std::size_t next_ind = _compatible.next_compatible_to( index, 0 );
 	while ( next_ind != index ) {
 		add_till_polytope( next_pc, next_ind, 1, _added);
 		next_ind = _compatible.next_compatible_to( index, next_ind );
@@ -149,7 +149,7 @@ Slave::add_till_polytope(const PC & p, std::size_t index_to_add,
 	}
 	auto const& vec_to_add = _vectors.at( index_to_add );
 	p.extend_by_vector(next_pc, vec_to_add);
-	if(_chk_cache.get(depth)(next_pc)) {
+	if(_polytope_check(next_pc)) {
 		next_pc.save(_lo_out);
 	} else if(depth != max_depth) {
 		added[depth] = index_to_add;
