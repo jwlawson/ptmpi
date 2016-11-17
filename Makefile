@@ -7,18 +7,23 @@ COMPILER = $(shell $(CXX) -showme:command)
 # B_OPT when compiling the final executable binary
 ifeq ($(COMPILER),icpc)
 # Intel optimizations are different to gcc ones
-# When '-O3' is used I have noticed that there are frequently memory corruption
-# issues.
-CXXFLAGS = -std=c++11 -xhost
+CXXFLAGS += -std=c++11 -xhost
 OPT = -O3 -ipo
-B_OPT = -O3 -ipo
 else
 # Using cygwin -std=gnu++11 should be used rather than -std=c++11
-CXXFLAGS = -Wall -Wextra -std=gnu++11 -march=native
-OPT = -g -O3
-B_OPT = -g -O3
+CXXFLAGS += -Wall -Wextra -std=gnu++11 -march=native\
+	-fno-signed-zeros\
+	-fno-math-errno\
+	-fno-rounding-math\
+	-fno-signaling-nans\
+	-fno-trapping-math\
+	-ffinite-math-only\
+	-Wno-misleading-indentation
+CXXFLAGS += -flto -fuse-linker-plugin
+OPT = -O3
 endif
-CXXFLAGS += -DARMA_DONT_USE_WRAPPER -DARMA_NO_DEBUG
+CXXFLAGS += -DARMA_DONT_USE_WRAPPER -DARMA_NO_DEBUG -DNDEBUG
+B_OPT += $(OPT)
 
 # Specify base directory
 BASE_DIR = .
@@ -32,14 +37,15 @@ OBJ_DIR = $(BASE_DIR)/build
 
 # define any directories containing header files other than /usr/include
 # e.g. I/home/include
-INCLUDES = -I$(HOME)/include -I$(BASE_DIR)/include -I$(BASE_DIR)/lib/include
+INCLUDES = -I$(BASE_DIR)/include -I$(BASE_DIR)/lib/include -I$(HOME)/include
 
 # define library paths in addition to /usr/lib
 # e.g. -L/home/lib
-LFLAGS = -L$(HOME)/lib -L$(BASE_DIR)/lib
+LFLAGS = -L$(BASE_DIR) -L$(BASE_DIR)/lib -L$(HOME)/lib
 
 # define any libraries to link into executable:
-LIBS = -lptope -lopenblas -llapack -lboost_system
+LIBS = -Wl,-Bstatic -lptope -Wl,-Bdynamic -lopenblas -llapack -lboost_system
+#LIBS = -lptope -lopenblas -llapack -lboost_system
 
 # find the C source files
 SRCS = $(wildcard $(SRC_DIR)/*.cc)
@@ -62,14 +68,8 @@ all:   $(MAIN)
 $(MAIN): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(B_OPT) $(INCLUDES) -o $(MAIN) $(OBJS) $(LFLAGS) $(LIBS)
 
-# Should be made more general
 install:	$(MAIN)
 	cp $(MAIN) $(HOME)/bin/
-
-# this is a suffix replacement rule for building .o's from .c's
-# it uses automatic variables $<: the name of the prerequisite of
-# the rule(a .c file) and $@: the name of the target of the rule (a .o file)
-# (see the gnu make manual section about automatic variables)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cc
 	$(CXX) $(CXXFLAGS) $(OPT) $(INCLUDES) -c $<  -o $@
